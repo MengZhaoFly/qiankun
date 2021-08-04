@@ -32,13 +32,15 @@ export function registerMicroApps<T extends ObjectType>(
 
     registerApplication({
       name,
+      // 一个加载函数，返回一个应用或者一个Promise
       app: async () => {
         loader(true);
         await frameworkStartedDefer.promise;
+        console.log(222222);
 
-        const { mount, ...otherMicroAppConfigs } = (
-          await loadApp({ name, props, ...appConfig }, frameworkConfiguration, lifeCycles)
-        )();
+        const { mount, ...otherMicroAppConfigs } = // 内部自己 加载逻辑 为了创建 single-spa 配置
+        (await loadApp({ name, props, ...appConfig }, frameworkConfiguration, lifeCycles))();
+        console.log('otherMicroAppConfigs', otherMicroAppConfigs);
 
         return {
           mount: [async () => loader(true), ...toArray(mount), async () => loader(false)],
@@ -52,7 +54,6 @@ export function registerMicroApps<T extends ObjectType>(
 }
 
 const appConfigPromiseGetterMap = new Map<string, Promise<ParcelConfigObjectGetter>>();
-const containerMicroAppsMap = new Map<string, MicroApp[]>();
 
 export function loadMicroApp<T extends ObjectType>(
   app: LoadableApp<T>,
@@ -70,39 +71,9 @@ export function loadMicroApp<T extends ObjectType>(
     return undefined;
   };
 
-  let microApp: MicroApp;
   const wrapParcelConfigForRemount = (config: ParcelConfigObject): ParcelConfigObject => {
-    const container = 'container' in app ? app.container : undefined;
-
-    let microAppConfig = config;
-    if (container) {
-      const xpath = getContainerXpath(container);
-      if (xpath) {
-        const containerMicroApps = containerMicroAppsMap.get(`${name}-${xpath}`);
-        if (containerMicroApps?.length) {
-          const mount = [
-            async () => {
-              // While there are multiple micro apps mounted on the same container, we must wait until the prev instances all had unmounted
-              // Otherwise it will lead some concurrent issues
-              const prevLoadMicroApps = containerMicroApps.slice(0, containerMicroApps.indexOf(microApp));
-              const prevLoadMicroAppsWhichNotBroken = prevLoadMicroApps.filter(
-                (v) => v.getStatus() !== 'LOAD_ERROR' && v.getStatus() !== 'SKIP_BECAUSE_BROKEN',
-              );
-              await Promise.all(prevLoadMicroAppsWhichNotBroken.map((v) => v.unmountPromise));
-            },
-            ...toArray(microAppConfig.mount),
-          ];
-
-          microAppConfig = {
-            ...config,
-            mount,
-          };
-        }
-      }
-    }
-
     return {
-      ...microAppConfig,
+      ...config,
       // empty bootstrap hook which should not run twice while it calling from cached micro app
       bootstrap: () => Promise.resolve(),
     };
@@ -154,30 +125,7 @@ export function loadMicroApp<T extends ObjectType>(
     startSingleSpa({ urlRerouteOnly: frameworkConfiguration.urlRerouteOnly ?? defaultUrlRerouteOnly });
   }
 
-  microApp = mountRootParcel(memorizedLoadingFn, { domElement: document.createElement('div'), ...props });
-
-  // Store the microApps which they mounted on the same container
-  const container = 'container' in app ? app.container : undefined;
-  if (container) {
-    const xpath = getContainerXpath(container);
-    if (xpath) {
-      const key = `${name}-${xpath}`;
-
-      const microAppsRef = containerMicroAppsMap.get(key) || [];
-      microAppsRef.push(microApp);
-      containerMicroAppsMap.set(key, microAppsRef);
-
-      // gc after unmount
-      microApp.unmountPromise.finally(() => {
-        const index = microAppsRef.indexOf(microApp);
-        microAppsRef.splice(index, 1);
-        // @ts-ignore
-        microApp = null;
-      });
-    }
-  }
-
-  return microApp;
+  return mountRootParcel(memorizedLoadingFn, { domElement: document.createElement('div'), ...props });
 }
 
 export function start(opts: FrameworkConfiguration = {}) {
@@ -209,5 +157,6 @@ export function start(opts: FrameworkConfiguration = {}) {
   startSingleSpa({ urlRerouteOnly });
   started = true;
 
+  console.log(11111);
   frameworkStartedDefer.resolve();
 }
